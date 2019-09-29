@@ -1,20 +1,22 @@
 import pyaudio
-import wave
-import os
+import sys, pygame
 import numpy as np
 from scipy.fftpack import fft
-from matplotlib import pyplot as plt
-from matplotlib.ticker import ScalarFormatter
-from scipy.interpolate import make_interp_spline, BSpline
 
-defaultframes = 256
+# PYGAME SETUP
+pygame.init()
+size = width, height = 1200, 900
+speed = [2, 2]
+black = 0, 0, 0
+
+screen = pygame.display.set_mode((width, height))
+
+# AUDIO INPUT SETUP
+defaultframes = 512
 
 recorded_frames = []
 device_info = {}
 useloopback = False
-
-# Set up the plot/axes
-fig, ax = plt.subplots(1, figsize=(15, 7))
 
 # Use module
 p = pyaudio.PyAudio()
@@ -79,49 +81,51 @@ stream = p.open(format=pyaudio.paInt16,
 print("Starting...")
 print("Channel Count: " + str(channelcount))
 
-# variable for plotting
-x = np.arange(0, defaultframes)
-
-# create a line object with random data
-line, = ax.semilogx(x, np.random.rand(defaultframes), '-', lw=7)
-
-# basic formatting for the axes
-ax.set_title('Audio Spectrum Analysis')
-ax.set_xlabel('frequency (daHz)')
-ax.set_ylabel('intensity')
-# ax.set_autoscale_on(True)
-# ax.autoscale_view(True, False, False)
-ax.set_xscale('log')
-ax.set_xticks([2, 6, 25, 50, 200, 400, 600, 2000])
-ax.get_xaxis().set_major_formatter(ScalarFormatter())
-
-# show the plot
-plt.xlim([2, defaultframes / 2])
-plt.ylim([0, 8192])
-plt.show(block=False)
+numBins = width // 5 #10
+amplitudeMult = height / 10
+# baseHeight = height / 5
+lastCount = [0 for i in range(numBins)]
+lastlastCount = [0 for i in range(numBins)]
 
 while True:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT: sys.exit()
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                pygame.quit()
+                sys.exit()
+
     frame = stream.read(defaultframes)
     data = np.frombuffer(frame, dtype='<i2').reshape(-1, channelcount)
     pdata = list(((a[0] + a[1]) / 2) for a in data)
     fdata = fft(pdata)
     # FFT produces negative values, only get positive
     y = 2 / len(fdata) * np.abs(fdata[0:np.int(len(fdata) / 2)])
+    binMembers = [0 for i in range(numBins + 1)]
+    for val in y:
+        if val <= 0.5:
+            continue
+        for i in range(1, numBins + 1):
+            if val <= 10 ** (0.01 * i):
+                if i-2 >= 0:
+                    binMembers[i-2] += 0.03
+                binMembers[i-1] += 1
+                if i <= numBins:
+                    binMembers[i] += 0.03
+                break
 
-    xnew = np.linspace(0, len(y), 350)
-    smooth = make_interp_spline(np.arange(0, len(y)), y, k=3)
-    ysmooth = smooth(xnew)
+    bgcolor = pygame.Color(0)
+    screen.fill(bgcolor)
+    for i in range(1, numBins):
+        avgNum = (binMembers[i] + lastCount[i] + lastlastCount[i]) / 3
+        rect = pygame.Rect(i * width/numBins, (height / 2) - (avgNum * amplitudeMult) / 2
+                           , width/numBins, avgNum * amplitudeMult)
+        col = pygame.Color(0)
+        col.hsla = i * (360 / numBins), 50, 50, 100
+        # col.hsla = (avgNum * 30, 50, 50, 100) if avgNum * 30 <= 360 else (360, 50, 50, 100)
+        pygame.draw.rect(screen, col, rect)
+        lastlastCount[i] = lastCount[i]
+        lastCount[i] = avgNum
 
-    try:
-        yavg = np.mean([ysmooth, lasty], axis=0)
-        line.set_data(xnew, yavg)
-    except NameError:
-        # line.set_data(np.arange(0, len(y)), y)
-        line.set_data(xnew, ysmooth)
-
-    ax.relim()
-    ax.autoscale_view(True, False, False)
-    fig.canvas.draw()
-    fig.canvas.flush_events()
-
-    lasty = ysmooth
+    pygame.display.flip()
