@@ -93,8 +93,13 @@ while True:
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                pygame.quit()
-                sys.exit()
+                width = 1920
+                height = 1080
+                numBins = width // 5
+                amplitudeMult = height / 10
+                lastCount = [0 for i in range(numBins)]
+                lastlastCount = [0 for i in range(numBins)]
+                screen = pygame.display.set_mode((width, height), pygame.FULLSCREEN)
 
     frame = stream.read(defaultframes)
     data = np.frombuffer(frame, dtype='<i2').reshape(-1, channelcount)
